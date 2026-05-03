@@ -1,0 +1,38 @@
+# Claude Code local settings
+.claude/
+
+# macOS
+.DS_Store
+
+# Generated data files
+cross_lingual_alignment/papers_found.csv
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Model checkpoints & outputs
+outputs/
+*.pt
+*.bin
+*.safetensors
+
+# Weights & Biases
+wandb/
+
+# Environment variables
+.env

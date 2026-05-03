@@ -1,0 +1,50 @@
+model:
+  name: "xlm-roberta-base"
+  proj_hidden: 2048   # projection head hidden dim
+  proj_out: 256       # projection head output dim
+
+data:
+  train_dataset: "opus100"
+  train_lang_pair: "en-es"
+  eval_dataset: "flores200"
+  max_seq_len: 128
+  train_batch_size: 64
+  eval_batch_size: 256
+  shuffle_buffer: 10000
+
+training:
+  max_steps: 50000
+  warmup_steps: 1000
+  grad_clip_norm: 1.0
+  fp16: true
+  seed: 42
+
+optimizer:
+  base_lr: 2.0e-5
+  weight_decay: 0.01
+  adam_epsilon: 1.0e-8
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+
+alignment:
+  scorer: "procrustes"       # procrustes | cosine | cka
+  update_freq: 500           # steps between alignment score recomputes
+  probe_batch_size: 256      # sentences used to compute alignment scores
+  scheduler_type: "softmax_inverse"  # linear | softmax_inverse | exponential
+  scheduler_temperature: 1.0
+  min_lr_scale: 0.01
+
+regularization:
+  lambda_reg: 0.1
+  weight_by_alignment: false  # true = ablation only; redundant with adaptive LR
+
+loss:
+  temperature: 0.07  # InfoNCE tau
+
+logging:
+  log_every: 50
+  eval_every: 1000
+  save_every: 5000
+  output_dir: "outputs/"
+  wandb_project: "cross_lingual_alignment"
+  wandb_run_name: null  # auto-generated if null
