@@ -1,0 +1,248 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[hidelinks]{hyperref}
+\setlength{\parskip}{6pt}
+\setlength{\parindent}{0pt}
+
+\begin{document}
+
+\begin{center}
+{\large \textbf{Aligned but Not Retrieved: Target-Language Selection Failure\\
+in Bilingual Contrastive Fine-Tuning}}\\[4pt]
+isaacchang@g.harvard.edu, ingridchien@g.harvard.edu, mtran@mit.edu
+\end{center}
+
+\vspace{4pt}
+
+\textbf{Motivation}
+
+Multilingual retrieval-augmented generation (RAG) systems face a failure mode we call
+language drift: a user queries in English targeting a Spanish knowledge base, but the
+retriever---a sentence encoder fine-tuned with contrastive learning---returns French or
+German documents instead, because semantically equivalent translations are
+indistinguishable in embedding space, and the language model generates in the wrong
+language. This failure is documented in production (Shi et al., 2025) and currently
+patched with decoder-side workarounds. We trace the root cause to the retriever and
+show that a training-time fix at the encoder eliminates the need for those patches.
+
+Multilingual models such as XLM-RoBERTa (Conneau et al., 2020) learn partially aligned
+cross-lingual representations, and contrastive fine-tuning with InfoNCE (van den Oord et al.,
+2018) further strengthens this alignment by pulling translation pairs together while
+separating non-parallel sentences. Standard retrieval benchmarks such as Tatoeba (Artetxe
+and Schwenk, 2019a) and BUCC (Zweigenbaum et al., 2017) evaluate performance by presenting
+English queries against a \emph{monolingual} candidate pool---for example, only Spanish
+sentences. In this closed-pool setting, semantic alignment and target-language selection
+are perfectly correlated by construction: any retrieved sentence is simultaneously the
+right meaning and the right language. The two objectives are indistinguishable.
+
+Our experiments expose a gap concealed by this design. After 2000 steps of InfoNCE
+fine-tuning on English--Spanish (EN--ES) bitext from OPUS-100, the model achieves
+P@1\,=\,0.994 on the standard closed pool of 1012 Spanish candidates. When we expand the
+candidate pool to 5060 sentences spanning five languages (ES, FR, DE, SW, AR), all drawn
+from FLORES-200 devtest and therefore semantically aligned by construction (each language
+contains a translation of the same 1012 source sentences), P@1 drops to 0.382. We
+decompose these failures into \emph{wrong-language true positives} (the model retrieves
+the semantically correct sentence but in the wrong language) and \emph{true errors}
+(the model retrieves an unrelated sentence). The result is unambiguous: P@1-any, where
+any correct translation in any language counts as a hit, equals 1.000 for both the encoder
+and projected spaces. True errors are exactly zero. Every failure is a wrong-language true
+positive.
+
+Language confusion is not uniform and follows a clear typological proximity gradient.
+Portuguese, the closest language to Spanish, produces the worst pairwise result
+(ES+PT: P@1\,=\,0.364)---worse than the full five-language pool---because all confusion
+concentrates on a single competitor. French and German together account for 96\% of
+hard-pool failures (ES+FR: 0.567, ES+DE: 0.542), while Swahili and Arabic are near the
+easy-pool ceiling (ES+SW: 0.936, ES+AR: 0.902). Notably, German is Germanic, not Romance,
+yet confuses nearly as badly as French; the relevant factor is surface-level similarity
+(shared script, vocabulary overlap, syntactic proximity), not family membership.
+
+This failure is specific to multiway-parallel evaluation and invisible on standard
+benchmarks. When we repeat the hard-pool test on OPUS-100 test data, where each language
+pair draws from independent source documents and wrong-language hits are genuine retrieval
+errors, the gap drops from 0.612 to 0.013. The model performs normally when candidate
+languages do not share source documents. The failure emerges only when semantically
+identical sentences in competing languages are present as candidates---precisely the
+multiway-parallel setting.
+
+Post-hoc geometric interventions make the hard pool \emph{worse}, not better: whitening
+costs 0.039 P@1 points, margin-based scoring (Artetxe and Schwenk, 2019b) costs 0.020,
+and both together cost 0.060. Hubness statistics confirm there is no geometry pathology
+to fix (hub fraction\,=\,0.000; $N_k$ standard deviation\,=\,1.26 against an expected
+value of 2.0). The InfoNCE projection head compounds the problem: the gap in the 256-dim
+projected space (0.667) exceeds the gap in the 768-dim encoder space (0.612), meaning the
+training objective actively degrades language discrimination rather than merely ignoring
+it. Finally, more InfoNCE training worsens target-language selectivity monotonically:
+P@1-target drops from 0.382 at 2K steps to 0.259 at 10K before partially recovering to
+0.297 at 20K, ruling out undertraining as an explanation and showing that the semantic
+collapse InfoNCE induces is progressive.
+
+\textbf{Proposed Research}
+
+We propose a diagnostic and interventional study of target-language selection failure in
+bilingual contrastive fine-tuning. Our central thesis is that bilingual InfoNCE optimizes
+semantic alignment but leaves target-language specificity underdetermined in multiway-parallel
+candidate pools; that this failure is invisible to standard closed-pool evaluation,
+follows a typological proximity gradient, and is addressable with a training-time
+language-conditioning signal.
+
+First, we \textit{characterize the failure across training pairs}. Beyond the EN--ES pilot,
+we fine-tune on EN--FR, EN--DE, and EN--SW and evaluate each against the five-language
+hard pool. We test whether confusion severity scales with typological proximity between
+the trained language and its neighbors, and whether training on a typologically isolated
+pair (EN--SW) produces less cross-lingual confusion than a crowded one (EN--ES).
+
+Second, we \textit{evaluate two training-time interventions}. (i)~\textit{Language-aware
+hard negative mining}: we inject same-source wrong-language translations directly into the
+InfoNCE denominator using FLORES-200 dev pairs, so the model explicitly learns during
+EN--ES training that semantically equivalent French and German sentences are wrong answers.
+This requires no architectural change. Hard negative mining closes 99.7\% of the FLORES
+gap in 2000 steps. However, the bystander evaluation reveals a severe limitation: by
+globally pushing all non-target-language representations away from EN queries during
+training, the model collapses EN$\to$FR, EN$\to$DE, and EN$\to$SW easy-pool P@1 to
+under 2\%---a catastrophic regression for any system that serves more than one target
+language. Standard bilingual EN$\to$ES retrieval also regresses by approximately 10\%
+on OPUS-100 test. Hard negative mining is therefore viable only for fixed-target-language
+systems, not as a general multilingual retrieval fix. (ii)~\textit{Language-conditioned query encoder}:
+motivated directly by the bystander collapse above, we add a learned per-target-language
+embedding to the query's mean-pooled representation before the projection head, combined
+with an auxiliary contrastive loss over six-tuples (EN, ES, FR, DE, SW, AR) from
+FLORES-200 dev that pulls queries toward their target-language translations and pushes
+away wrong-language translations of the same sentence. At inference, the query is
+conditioned on the desired target language---a targeted pull rather than a global push,
+which is the mechanism required to avoid bystander degradation. We sweep auxiliary loss
+weight $\lambda \in \{0.1,\,0.5,\,1.0,\,2.0\}$. Because the failure is at least
+as severe in the raw encoder space as in the projected space, language conditioning is
+applied at the encoder output level to affect the full projection path.
+
+We compare both interventions against: pretrained XLM-R (zero-shot), LaBSE (Feng et al.,
+2022) as a zero-shot baseline trained to avoid this collapse, vanilla InfoNCE at the 2K-step
+best checkpoint, oracle language filter (ceiling), and predicted language filter
+(langdetect). We report P@1-target, P@1-any, and the per-language confusion matrix for
+all conditions, on both the training pair (EN--ES) and bystander languages.
+
+Third, we \textit{validate the retrieval fix end-to-end in a RAG pipeline}. Using MKQA
+or XQuAD with a multilingual Wikipedia passage corpus (ES, FR, DE, SW, AR), we
+demonstrate that the training-time interventions above directly reduce language drift in
+generated outputs---confirming that fixing the encoder eliminates the need for decoder-side
+workarounds. We measure retrieval language accuracy (fraction of top-1 passages in the
+target language) and answer language drift (fraction of LLM outputs in the wrong language).
+
+\textbf{Related Work}
+
+XLM-RoBERTa (Conneau et al., 2020) is our base model. InfoNCE (van den Oord et al., 2018)
+and SimCSE (Gao et al., 2021) form the fine-tuning backbone. LaBSE (Feng et al., 2022)
+achieves strong cross-lingual retrieval results but trains and evaluates on closed
+monolingual pools---the design that conceals the failure mode we study. Artetxe and Schwenk
+(2019b) introduce the margin scoring function we test as a post-hoc baseline, and their
+LASER system (2019a) establishes the Tatoeba benchmark on which we build.
+
+Shi et al.\ (2025) document language drift in production multilingual RAG
+systems---generated output appearing in the wrong language---and propose decoder-side
+workarounds; we instead identify and fix the root cause at the retriever.
+
+Huang et al.\ (2025) show that joint cross-lingual alignment and language-specialization
+training cause interference and that separate modular training resolves it---directly
+validating our failure mode from a complementary angle and motivating our language-conditioned
+architecture. Asai et al.\ (2022) demonstrate that same-meaning different-language
+translation pairs function as effective hard negatives for multilingual dense retrieval,
+supporting our Phase~2a approach.
+
+The closest related work is LAReQA (Roy et al., 2020), which introduces language-agnostic
+answer retrieval from a multilingual pool and explicitly notes that closed-pool benchmarks
+do not test language confusion bias---directly corroborating our diagnosis. However,
+LAReQA optimizes the \emph{opposite} objective: it rewards retrieving the best answer
+\emph{regardless} of language. Our setting requires language-targeted retrieval from a
+multilingual pool, where semantically correct translations in the wrong language are
+failures, not successes. To our knowledge no prior work identifies the gap between
+P@1-any and P@1-target as a distinct failure mode of bilingual contrastive training,
+characterizes its typological proximity gradient, demonstrates that it vanishes on
+non-parallel benchmarks, or proposes a training objective that addresses it without
+collapsing retrieval in bystander languages. The bystander collapse produced by hard
+negative mining---a known technique---makes the language-conditioned query encoder the
+central architectural contribution of this work.
+
+\textbf{Evaluation}
+
+We evaluate retrieval using P@1-target, P@1-any, wrong-language positive rate, true error
+rate, and the full per-language confusion matrix under both closed (1012 same-language
+candidates) and hard (5060 five-language candidates) pool settings, using FLORES-200
+devtest throughout. We additionally report pairwise two-language pool results (ES+PT,
+ES+FR, ES+DE, ES+SW, ES+AR) to quantify the proximity gradient and verify that
+interventions reduce confusion for the most confusable pairs without degrading the
+already-strong SW and AR results. Critically, we evaluate all interventions on
+\textit{bystander easy pools}---EN$\to$FR, EN$\to$DE, EN$\to$SW, EN$\to$AR retrieval
+on single-language candidate pools---to characterize whether each fix degrades general
+multilingual retrieval capability. Hard negative mining collapses bystander P@1 to under
+2\%; the language-conditioned encoder is specifically designed to avoid this by
+conditioning queries on the target language at inference time rather than globally
+repelling bystander languages during training.
+
+We compare FLORES-200 devtest results against OPUS-100 test results to demonstrate the
+benchmark design effect: the gap invisible on OPUS-100 (0.013) grows to 0.612 on
+FLORES, establishing that multiway-parallel evaluation is necessary to observe the failure
+and that the finding is not a generic retrieval failure.
+
+For geometric analysis we track layer-wise CKA and Procrustes similarity before and after
+fine-tuning to verify that language conditioning does not degrade the underlying cross-lingual
+alignment that standard benchmarks measure. All retrieval experiments are run on the
+training pair (EN--ES) and on bystander languages (FR, DE, SW, AR) to confirm that
+interventions do not transfer confusion to previously unaffected language pairs.
+
+\textbf{Feasibility and Implementation}
+
+We build on a working codebase using XLM-R base, mean-pooled L2-normalized sentence
+representations, and InfoNCE loss with AdamW on OPUS-100 bitext. The hard-pool evaluation
+pipeline, error decomposition, per-family pool breakdown, OPUS-100 comparison, and language
+confusion matrix are fully implemented and produced the results reported above. Checkpoints
+at 2K, 5K, 10K, and 20K steps are trained and available. Multiway parallel data for the
+auxiliary loss is available from FLORES-200 dev (997 sentences, separate from the devtest
+split used for all reported metrics). The language-conditioned architecture adds one
+learned embedding per target language to the existing encoder output; the hard negative
+variant modifies only the data collator. Both interventions are feasible on a single GPU
+in mixed precision and ablate cleanly against the vanilla InfoNCE baseline. MKQA and
+XQuAD are publicly available; the RAG end-to-end evaluation requires one inference pass
+per encoder configuration using a publicly available LLM (GPT-4o mini).
+
+\medskip
+\noindent\textbf{References}
+
+\noindent Artetxe and Schwenk (2019a). Massively Multilingual Sentence Embeddings for
+Zero-Shot Cross-Lingual Transfer and Beyond. \textit{TACL}.
+
+\noindent Artetxe and Schwenk (2019b). Margin-Based Parallel Corpus Mining with
+Multilingual Sentence Embeddings. \textit{ACL}.
+
+\noindent Asai et al.\ (2022). Multilingual Dense Passage Retrieval with Hard and False
+Negatives. \textit{EMNLP}.
+
+\noindent Conneau et al.\ (2020). Unsupervised Cross-Lingual Representation Learning at
+Scale. \textit{EMNLP}.
+
+\noindent Feng et al.\ (2022). Language-Agnostic BERT Sentence Embedding. \textit{ACL}.
+
+\noindent Gao et al.\ (2021). SimCSE: Simple Contrastive Learning of Sentence
+Embeddings. \textit{EMNLP}.
+
+\noindent Huang et al.\ (2025). Modular Sentence Encoders: Separating Language
+Specialization from Cross-Lingual Alignment. \textit{ACL}. arXiv:2407.14878.
+
+\noindent Roy et al.\ (2020). LAReQA: Language-Agnostic Answer Retrieval from a
+Multilingual Pool. \textit{EMNLP}.
+
+\noindent van den Oord et al.\ (2018). Representation Learning with Contrastive Predictive
+Coding. \textit{arXiv:1807.03748}.
+
+\noindent Zhang et al.\ (2020). OPUS-100: An English-centric Multilingual Corpus.
+\textit{LREC}.
+
+\noindent Shi et al.\ (2025). Language Drift in Multilingual Retrieval-Augmented
+Generation. arXiv:2511.09984.
+
+\noindent Zweigenbaum et al.\ (2017). Overview of the Second BUCC Shared Task: Spotting
+Parallel Sentences in Comparable Corpora. \textit{ACL Workshop on BUCC}.
+
+\end{document}
