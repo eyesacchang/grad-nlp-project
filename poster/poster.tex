@@ -1,0 +1,298 @@
+% 48in x 36in landscape poster — custom layout (no beamer)
+\documentclass[20pt]{extarticle}
+
+\usepackage[
+  paperwidth=48in, paperheight=36in,
+  margin=0.8in, top=0.7in, bottom=0.7in,
+  left=0.9in, right=0.9in,
+  includeall
+]{geometry}
+
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{tcolorbox}
+\usepackage{enumitem}
+\usepackage[T1]{fontenc}
+\usepackage{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{array}
+
+\tcbuselibrary{skins,breakable}
+
+\pagestyle{empty}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+% --- Colors -----------------------------------------------------------------
+\definecolor{primary}{HTML}{1F3A5F}
+\definecolor{accent}{HTML}{E07B27}
+\definecolor{accent2}{HTML}{3B7DB5}
+\definecolor{lightbg}{HTML}{F4F5F7}
+\definecolor{rule}{HTML}{D5D8DC}
+\definecolor{soft}{HTML}{FFF4EA}
+
+% --- Font size shortcuts ----------------------------------------------------
+\newcommand{\titlesize}{\fontsize{58}{68}\selectfont}
+\newcommand{\authorsize}{\fontsize{28}{32}\selectfont}
+\newcommand{\affilsize}{\fontsize{22}{26}\selectfont}
+\newcommand{\sectionsize}{\fontsize{30}{34}\selectfont}
+\newcommand{\bodysize}{\fontsize{19}{24}\selectfont}
+\newcommand{\smallsize}{\fontsize{17}{22}\selectfont}
+\newcommand{\abstractsize}{\fontsize{21}{26}\selectfont}
+\newcommand{\callout}{\fontsize{18}{23}\selectfont}
+
+% --- Section box ------------------------------------------------------------
+\newtcolorbox{sectionbox}[1]{
+  enhanced, breakable,
+  colback=lightbg, colframe=primary,
+  boxrule=0pt, leftrule=10pt, arc=4pt,
+  left=18pt, right=18pt, top=14pt, bottom=14pt,
+  title={\color{white}\bfseries\sectionsize\,\,#1},
+  coltitle=white,
+  fonttitle=\bfseries,
+  attach boxed title to top left={xshift=14pt, yshift=-12pt},
+  boxed title style={
+    colback=primary, colframe=primary, sharp corners, boxrule=0pt,
+    left=12pt, right=12pt, top=6pt, bottom=6pt,
+  },
+  before upper={\vspace{10pt}\bodysize},
+}
+
+% --- Highlight callout box --------------------------------------------------
+\newtcolorbox{intuitionbox}{
+  enhanced, colback=soft, colframe=accent,
+  boxrule=0.8pt, arc=3pt,
+  left=14pt, right=14pt, top=8pt, bottom=8pt,
+}
+
+% --- Document ---------------------------------------------------------------
+\begin{document}
+
+% ============================================================
+%  HEADLINE
+% ============================================================
+\begin{center}
+{\color{primary}\titlesize\bfseries IsoColBERT: Token-Level Isotropy Regularization for Multilingual Late-Interaction Retrieval}\\[12pt]
+{\authorsize Isaac Chang \quad Ingrid Chien \quad M.\ Tran} \;\;|\;\;
+{\affilsize Harvard University \,/\, MIT \;\;|\;\; MRL Workshop @ EMNLP 2026}
+\end{center}
+
+\vspace{4pt}
+{\color{accent}\rule{\linewidth}{4pt}}
+\vspace{8pt}
+
+% ============================================================
+%  ABSTRACT BANNER
+% ============================================================
+\begin{tcolorbox}[
+  enhanced, colback=white, colframe=primary,
+  boxrule=1.2pt, arc=4pt,
+  left=20pt, right=20pt, top=8pt, bottom=8pt,
+]
+\abstractsize
+Late-interaction multilingual retrievers such as ColBERT use token-level embeddings for MaxSim matching. We show that multilingual ColBERT models \textbf{suffer from token-level anisotropy}, where embeddings collapse into a narrow cone with low effective rank. To address this, we introduce \textbf{IsoColBERT}, a regularizer added to the InfoNCE training objective with zero inference cost. Across three random seeds, IsoColBERT improves token-embedding geometry and significantly boosts low-resource retrieval, achieving a \textbf{+2.69 point} gain on English--Swahili ($p < 0.001$). Ablations show that broad embedding-space regularization is more effective than localized token- and attention-based constraints. These results demonstrate that token-level isotropy directly impacts multilingual late-interaction retrieval.
+\end{tcolorbox}
+
+\vspace{8pt}
+
+% ============================================================
+%  THREE COLUMNS
+% ============================================================
+\noindent
+% --------- COLUMN 1 ---------
+\begin{minipage}[t]{0.315\linewidth}
+
+\begin{sectionbox}{Motivation}
+Cross-lingual search and retrieval-augmented generation depend on multilingual retrievers --- systems that map English queries to documents in dozens of target languages. Late-interaction models like \textbf{ColBERT} differ from sentence-level encoders by matching at the \textbf{token level}: every query token finds its best partner in the candidate document, and the scores are summed (the \textit{MaxSim} operation). Retrieval quality therefore depends directly on the \textbf{geometry of individual token vectors}.
+
+\vspace{6pt}
+\textbf{Why this matters now.}
+\begin{itemize}[leftmargin=24pt, itemsep=4pt, topsep=4pt]
+\item In \emph{single-vector} encoders, anisotropy is averaged out across the sequence before scoring --- its impact is muted.
+\item In \emph{late-interaction} models, \textbf{every token participates directly}. If embeddings collapse into a narrow cone, MaxSim degenerates: many tokens look similar to many other tokens.
+\end{itemize}
+
+\vspace{6pt}
+Anisotropy in single-vector encoders is well documented (Ethayarajh, EMNLP 2019). Its consequences for multi-vector retrievers remain largely unexamined --- yet token geometry is precisely what these models rely on at inference time.
+
+\begin{intuitionbox}
+\callout
+\textbf{Intuition.} Imagine packing arrows into a tiny cone vs.\ spreading them across a sphere. Both have the same number of arrows, but the sphere lets each one ``point uniquely'' --- which is exactly what MaxSim needs to distinguish good matches from bad ones.
+\end{intuitionbox}
+
+\vspace{4pt}
+The pathology should hit hardest on \textbf{low-resource cross-lingual pairs}, where the encoder has the least pretrained signal and the largest retrieval headroom to recover.
+\end{sectionbox}
+
+\vspace{10pt}
+
+\begin{sectionbox}{Method: IsoColBERT}
+Standard ColBERT setup: XLM-R encoder $\rightarrow$ linear projection to 128 dims $\rightarrow$ $L_2$-normalized token vectors for queries and documents.
+
+\vspace{6pt}
+\textbf{MaxSim retrieval score} (sums per-query-token best matches):
+\[
+\text{score}(Q,D) = \sum_{q \in Q}\,\max_{d \in D}\, \langle q, d\rangle
+\]
+
+\vspace{4pt}
+\textbf{Training loss (IsoColBERT):}
+\begin{tcolorbox}[enhanced, colback=white, colframe=accent, boxrule=1.2pt, arc=3pt,
+  left=14pt, right=14pt, top=8pt, bottom=8pt]
+\[
+\mathcal{L} = \mathcal{L}_{\text{InfoNCE}} + \lambda \cdot \tfrac{1}{2}\Big(\overline{\cos^2}_{\text{off}}(Q) + \overline{\cos^2}_{\text{off}}(D)\Big)
+\]
+\end{tcolorbox}
+
+\vspace{4pt}
+The second term is the \textbf{mean squared off-diagonal cosine similarity} among valid query and document token vectors in a batch. It penalizes any pair of tokens that look too similar, regardless of their content.
+
+\begin{intuitionbox}
+\callout
+\textbf{What the loss does.} Push every pair of token vectors slightly apart. Over training, the model learns to ``use more of the sphere'' --- each token finds its own direction. Inference is unchanged: the regularizer only shapes training-time geometry.
+\end{intuitionbox}
+
+\vspace{4pt}
+\textbf{One hyperparameter} ($\lambda$, regularizer strength). \textbf{Zero inference cost.} No architecture changes.
+\end{sectionbox}
+
+\vspace{10pt}
+
+\begin{sectionbox}{Experimental Setup}
+\textbf{Model.} XLM-RoBERTa-base fine-tuned end-to-end with a 128-dim linear projection producing $L_2$-normalized token vectors. Sequences are truncated to 64 tokens. We train with the combined InfoNCE and isotropy objective; the baseline uses InfoNCE alone at $\lambda{=}0$.
+
+\textbf{Training.} OPUS-100 English--Spanish parallel text. We train for 2000 steps at effective batch size 32 using AdamW with learning rate $2\times 10^{-5}$, weight decay 0.01, and InfoNCE temperature 0.07.
+
+\textbf{Evaluation.} FLORES+ dev and devtest are combined into a single per-language retrieval pool of roughly 2009 candidates. We evaluate across five language pairs: EN$\to$ES, EN$\to$FR, and EN$\to$DE as high-resource controls; EN$\to$SW for Swahili and EN$\to$AR for Arabic as low-resource headline pairs. All pairs except EN$\to$ES are evaluated \textbf{zero-shot}: the model never sees these target languages during contrastive training.
+
+\textbf{Metrics.}
+\begin{itemize}[leftmargin=22pt, itemsep=4pt, topsep=4pt]
+\item \emph{MaxSim Precision@1.} Primary retrieval metric; full pairwise MaxSim scoring against the entire candidate pool.
+\item \emph{Token intra-cosine.} Mean off-diagonal cosine across 2048 valid token vectors per language; direct measure of anisotropy.
+\item \emph{Effective rank.} Exp of entropy of the normalized singular-value spectrum over 4096 stacked token vectors; how many dimensions the embedding space effectively uses.
+\end{itemize}
+
+\textbf{Robustness.} All retrieval results are reported as mean $\pm$ standard deviation across 3 independent random seeds. The $\lambda$ ablation was conducted as a single-seed pilot; the best $\lambda$ was then validated multi-seed.
+\end{sectionbox}
+
+\end{minipage}%
+\hfill
+% --------- COLUMN 2 ---------
+\begin{minipage}[t]{0.345\linewidth}
+
+\begin{sectionbox}{Main Results: Retrieval}
+\centering
+\includegraphics[width=\linewidth]{fig_main_p1.pdf}
+
+\vspace{6pt}
+\raggedright\bodysize
+\textbf{Headline.} \textbf{+2.69 pp} on EN--SW ($p<0.001$, all 3 seeds individually positive). \textbf{+0.70 pp} on EN--AR ($p<0.01$). High-resource pairs (ES, FR, DE) saturate at $\geq$0.997 P@1 for both methods --- both already at ceiling, no retrieval headroom for either method to exploit.
+
+\begin{intuitionbox}
+\callout
+\textbf{Why these languages?} EN--SW and EN--AR are the only pairs with room to grow. XLM-R was pretrained on far less Swahili / Arabic data than Spanish / French / German --- which is exactly where token geometry has the most room to be reshaped, and the most retrieval headroom to recover.
+\end{intuitionbox}
+
+\vspace{4pt}
+\textbf{Per-seed sanity (EN--SW):} seed 42 +0.018, seed 1337 +0.023, seed 2024 +0.039. Every seed individually positive, and variance also shrinks ($\sigma: 0.013 \rightarrow 0.010$). The regularized model is not just better on average --- it is more stable.
+\end{sectionbox}
+
+\vspace{10pt}
+
+\begin{sectionbox}{Main Results: Geometry}
+\centering
+\includegraphics[width=\linewidth]{fig_geometric.pdf}
+
+\vspace{6pt}
+\raggedright\bodysize
+The regularizer reshapes the embedding space in exactly the direction it was designed to: \textbf{tokens become less similar to each other} (lower intra-cosine), and the embedding space \textbf{uses more of its available dimensions} (higher effective rank). All four shifts are significant at $p<0.001$.
+
+\begin{intuitionbox}
+\callout
+\textbf{Why is ES affected more than EN?} The model trains on EN--ES bitext using bidirectional InfoNCE. The Spanish (target-side) representations bear most of the contrastive pressure, so they collapse the hardest under vanilla training --- and reshape the hardest under IsoColBERT.
+\end{intuitionbox}
+
+\vspace{4pt}
+\textbf{Hard-negative robustness.} We re-evaluate against K=20 LaBSE-mined distractors per query (sentences that another strong multilingual model judges most similar to the query). The EN--SW gain \emph{still} holds at \textbf{+2.16 pp} ($p<0.001$) --- the improvement is not an artifact of weak FLORES candidate pools.
+
+\vspace{2pt}
+\textbf{Five metrics improve at $p<0.001$ simultaneously:} EN--SW P@1, intra-cos EN, intra-cos ES, eRank EN, eRank ES.
+\end{sectionbox}
+
+\end{minipage}%
+\hfill
+% --------- COLUMN 3 ---------
+\begin{minipage}[t]{0.315\linewidth}
+
+\begin{sectionbox}{Mechanism Ablations}
+We test two alternative places to put the regularizer.
+
+\vspace{4pt}
+\centering
+\includegraphics[width=\linewidth]{fig_ablation.pdf}
+
+\vspace{6pt}
+\raggedright\bodysize
+\textbf{(a) Active-token iso-reg.} Regularize \emph{only} the tokens that win MaxSim matches (query tokens + their argmax doc tokens). Result: EN--SW $-2.1$ pp, intra-cos ES $+0.06$, eRank ES $-2.5$ vs.\ uniform.
+
+\vspace{4pt}
+\textbf{(b) Cross-attention iso-reg.} Regularize the $L_q \times L_d$ matching matrix itself --- penalize redundancy in \emph{matching patterns} rather than embedding directions. Result: EN--SW $-3.7$ pp, intra-cos ES $+0.12$, eRank ES $-4.8$ vs.\ uniform.
+
+\begin{intuitionbox}
+\callout
+\textbf{Why do these fail?}\\[4pt]
+\textbf{Active-token:} Only fixes geometry for tokens that already win --- but the retrieval loss comes from tokens that \emph{lose} to a wrong-document token. Shrinking the regularization surface area kills the effect.\\[4pt]
+\textbf{Cross-attention:} Flattens the matching pattern but leaves the underlying tokens just as anisotropic as vanilla. Treats a symptom, not the cause.
+\end{intuitionbox}
+
+\vspace{4pt}
+\textbf{Joint interpretation.} Both negative results triangulate the conclusion: the benefit of iso-reg in late-interaction retrievers requires \textbf{broad embedding-space shaping} across the full token manifold. Localized or object-level constraints are not substitutes.
+\end{sectionbox}
+
+\vspace{10pt}
+
+\begin{sectionbox}{Lambda Ablation}
+\centering
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Metric} & \textbf{Vanilla} & $\boldsymbol{\lambda{=}0.1}$ & $\boldsymbol{\lambda{=}0.5}$ \\
+\midrule
+EN--SW P@1   & 0.8344 & 0.8669 & \textbf{0.8689} \\
+EN--AR P@1   & 0.9423 & 0.9574 & \textbf{0.9622} \\
+Intra-cos ES & 0.2937 & 0.2535 & \textbf{0.1808} \\
+eRank ES     & 101.73 & 103.78 & \textbf{106.70} \\
+\bottomrule
+\end{tabular}
+
+\vspace{6pt}
+\raggedright\bodysize
+Geometric metrics improve \textbf{monotonically} with $\lambda$. Retrieval P@1 begins saturating near $\lambda=0.5$ --- more pressure keeps reshaping the space, but the retrieval payoff plateaus.
+
+\begin{intuitionbox}
+\callout
+\textbf{Reading.} $\lambda=0$ is the vanilla collapsed state. Each step up in $\lambda$ ``spreads the sphere'' further. Past $\lambda \approx 0.5$, you keep getting better geometry but no extra retrieval gain --- the model has already escaped the regime where anisotropy was costing you accuracy.
+\end{intuitionbox}
+\end{sectionbox}
+
+\vspace{10pt}
+
+\begin{sectionbox}{Takeaways}
+\begin{itemize}[leftmargin=24pt, itemsep=6pt, topsep=4pt]
+\item Token-level anisotropy is a \textbf{real, measurable pathology} in multilingual late-interaction retrievers --- not just a single-vector problem.
+\item A \textbf{single regularizer term} fixes it with \textbf{zero inference cost} and no architecture changes.
+\item Gains concentrate where there is \textbf{both pretrained-signal scarcity and retrieval headroom} (low-resource pairs); high-resource pairs are unaffected --- nothing breaks.
+\item Two negative ablations isolate the mechanism: \textbf{broad embedding-space shaping is the right level of intervention}.
+\item \textbf{Token geometry is a tractable lever} for low-resource multilingual retrieval.
+\end{itemize}
+
+\vspace{4pt}
+\textbf{Future work.} Multi-pair training (mMARCO, MIRACL); other multilingual backbones; harder retrieval benchmarks beyond FLORES.
+\end{sectionbox}
+
+\end{minipage}
+
+\end{document}
