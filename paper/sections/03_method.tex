@@ -14,7 +14,7 @@ We follow the standard cross-lingual ColBERT setup: an XLM-RoBERTa encoder with 
 \label{eq:infonce}
 \mathcal{L}_{\mathrm{InfoNCE}} = \tfrac{1}{2}\bigl[ \ell(S, T) + \ell(T, S) \bigr],
 \end{equation}
-where $\ell(S, T)$ is the cross-entropy of the temperature-scaled scores from \eqref{eq:maxsim} against the diagonal positive assignment.
+where $\ell(S, T)$ is the cross-entropy of the temperature-scaled scores from \eqref{eq:maxsim} against the diagonal positive assignment. Concretely, we compute a single $B \times B$ MaxSim score matrix with source tokens as queries and target tokens as documents, and apply symmetric cross-entropy along both axes by transposing this matrix; because \eqref{eq:maxsim} is asymmetric in its query and document arguments, this is not identical to recomputing MaxSim with target tokens as queries. We use the transposed form throughout — the same symmetric-cross-entropy pattern standard in CLIP-style contrastive pretraining.
 
 \subsection{Token-Level Anisotropy}
 \label{sec:method-anisotropy}
@@ -54,7 +54,7 @@ If token-level anisotropy degrades MaxSim, the natural remedy is to add a traini
 \label{eq:reg}
 R(X) = \frac{1}{N(N-1)} \sum_{i \ne j} \langle x_i, x_j \rangle^2.
 \end{equation}
-The squared form has two properties we want. It is non-negative and zero only when all pairs are orthogonal, so the regularizer has a clean optimum. It penalizes negative correlations as well as positive ones, which is appropriate on the hypersphere where $\langle x_i, x_j \rangle$ already takes values in $[-1, 1]$.
+The squared form has two properties we want. It is non-negative, with its minimum attained when all pairs are orthogonal. We do not reach this minimum in practice: with $N \le 256$ token vectors subsampled into $k=128$ dimensions, at most $k$ pooled vectors can be mutually orthogonal, so the exact zero is unattainable in our setting. The loss nonetheless continues to drive pairwise cosine similarities toward zero, spreading the pooled vectors as far apart as the embedding dimension permits. The squared form also penalizes negative correlations as well as positive ones, which is appropriate on the hypersphere where $\langle x_i, x_j \rangle$ already takes values in $[-1, 1]$.
 
 The full IsoColBERT objective adds \eqref{eq:reg} to the InfoNCE loss with weight $\lambda$, applied symmetrically to the query and document token banks:
 \begin{equation}
